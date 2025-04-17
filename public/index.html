@@ -445,7 +445,10 @@
         await delay(1000);
       }
 
-      const avg = rates.reduce((a, b) => a + parseFloat(b), 0) / rates.length;
+      const avg = enableAmounts
+        ? converted.reduce((a, b) => a + parseFloat(b), 0) / converted.length
+        : rates.reduce((a, b) => a + parseFloat(b), 0) / rates.length;
+
       const datasets = [
         {
           label: `1 ${baseCode} → ${targetCode}`,
@@ -453,7 +456,7 @@
           borderWidth: 2
         },
         {
-          label: `${targetCode} Avg`,
+          label: enableAmounts ? `${baseCode} Avg (Converted)` : `${targetCode} Avg`,
           data: new Array(labels.length).fill(avg),
           borderDash: [5, 5],
           borderColor: 'gray',
