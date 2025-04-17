@@ -7,49 +7,119 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
+    :root {
+      --bg: #f1f5f9;
+      --fg: #111827;
+      --card-bg: #ffffff;
+      --primary: #1e3a8a;
+      --accent: #10b981;
+      --input-bg: #f9fafb;
+      --border: #cbd5e1;
+      --shadow: rgba(0, 0, 0, 0.05);
+    }
+
+    body.dark {
+      --bg: #0f172a;
+      --fg: #f1f5f9;
+      --card-bg: #1e293b;
+      --primary: #60a5fa;
+      --accent: #34d399;
+      --input-bg: #1e293b;
+      --border: #334155;
+      --shadow: rgba(255, 255, 255, 0.05);
+    }
+
     body {
-      font-family: Arial, sans-serif;
-      margin: 1rem;
-      padding: 0;
-      box-sizing: border-box;
-      background-color: #f9f9f9;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background-color: var(--bg);
+      color: var(--fg);
+      transition: background 0.3s, color 0.3s;
     }
 
     .container {
-      max-width: 800px;
+      max-width: 850px;
       margin: auto;
-      background: #fff;
-      padding: 1.5rem;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+      background: var(--card-bg);
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px var(--shadow);
+      transition: background 0.3s, box-shadow 0.3s;
     }
 
     h1 {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 1rem;
-      font-size: 1.5rem;
-    }
-
-    textarea, select, input[type="text"], button {
-      width: 100%;
-      margin-top: 10px;
-      padding: 10px;
-      font-size: 1rem;
-      box-sizing: border-box;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      font-size: 1.75rem;
+      font-weight: bold;
+      margin-bottom: 1rem;
+      color: var(--primary);
     }
 
     label {
-      font-weight: bold;
-      margin-top: 1rem;
+      font-weight: 600;
+      margin-top: 1.25rem;
       display: block;
+    }
+
+    textarea,
+    select,
+    input[type="text"] {
+      width: 100%;
+      margin-top: 0.5rem;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background-color: var(--input-bg);
+      color: var(--fg);
+      transition: background 0.3s, border-color 0.2s;
+    }
+
+    textarea:focus,
+    select:focus,
+    input[type="text"]:focus {
+      border-color: var(--primary);
+      outline: none;
+    }
+
+    button {
+      display: inline-block;
+      background: linear-gradient(to right, var(--primary), #2563eb);
+      color: white;
+      font-weight: bold;
+      padding: 0.75rem 1rem;
+      margin-top: 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: linear-gradient(to right, #2563eb, var(--primary));
+    }
+
+    #summaryOutput {
+      font-size: 1.1rem;
+      color: var(--accent);
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
     }
 
     #chartContainer {
       margin-top: 2rem;
+      background-color: var(--input-bg);
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
     }
 
     canvas {
@@ -61,11 +131,19 @@
       display: none;
     }
 
-    .checkbox-group {
+    #log {
+      font-size: 1rem;
+      font-weight: normal;
+      color: #64748b;
+    }
+
+    .theme-toggle {
+      font-size: 0.95rem;
+      user-select: none;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      margin-top: 1rem;
+      gap: 0.4rem;
+      cursor: pointer;
     }
 
     @media (max-width: 600px) {
@@ -79,6 +157,8 @@
         align-items: flex-start;
       }
     }
+
+
   </style>
 </head>
 <body>
@@ -87,6 +167,13 @@
       Cross Currency Rate Viewer
       <span id="log" style="font-size: 1rem; font-weight: normal; color: #555;"></span>
     </h1>
+
+    <div style="margin-left: auto;">
+      <label class="theme-toggle">
+        <input type="checkbox" id="darkModeToggle" />
+        🌙 Dark Mode
+      </label>
+    </div>
 
     <label for="baseCurrency">Base Currency:</label>
     <select id="baseCurrency"></select>
@@ -223,29 +310,83 @@
       return dates.reverse().join('\n');
     }
 
+    function getChartTheme() {
+      const isDark = document.body.classList.contains("dark");
+      return {
+        color: isDark ? '#f1f5f9' : '#111827',
+        gridColor: isDark ? '#334155' : '#e2e8f0',
+        background: isDark ? '#1e293b' : '#ffffff'
+      };
+    }
+
     function drawChart(dataSets) {
       const ctx = document.getElementById('rateChart').getContext('2d');
       if (chartInstance) chartInstance.destroy();
 
+      const theme = getChartTheme();
+
       chartInstance = new Chart(ctx, {
         type: 'line',
-        data: { labels: dataSets.labels, datasets: dataSets.datasets },
+        data: {
+          labels: dataSets.labels,
+          datasets: dataSets.datasets.map(ds => ({
+            ...ds,
+            tension: 0.3,
+            borderColor: ds.borderColor || theme.color,
+            backgroundColor: 'transparent',
+            pointRadius: 3,
+            pointHoverRadius: 5
+          }))
+        },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: {
+            duration: 1000,
+            easing: 'easeOutQuart'
+          },
           plugins: {
+            legend: {
+              labels: {
+                color: theme.color
+              }
+            },
             zoom: {
               pan: { enabled: true, mode: 'x' },
               zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
             }
           },
           scales: {
-            x: { title: { display: true, text: 'Date' } },
-            y: { title: { display: true, text: 'Value' } }
+            x: {
+              ticks: { color: theme.color },
+              grid: { color: theme.gridColor },
+              title: {
+                display: true,
+                text: 'Date',
+                color: theme.color
+              }
+            },
+            y: {
+              ticks: { color: theme.color },
+              grid: { color: theme.gridColor },
+              title: {
+                display: true,
+                text: 'Value',
+                color: theme.color
+              }
+            }
           }
         }
       });
     }
+
+    // Dark mode toggle logic
+    document.getElementById('darkModeToggle').addEventListener('change', (e) => {
+      document.body.classList.toggle('dark', e.target.checked);
+      if (chartInstance) {
+        drawChart(chartInstance.config.data); // re-draw with new theme
+      }
+    });
 
     async function run() {
       document.getElementById("spinner").style.display = "block";
@@ -355,6 +496,29 @@
       document.getElementById('dateInput').value = getFirstDaysOfLast12Months();
     }
 
+    function savePreferences() {
+      const prefs = {
+        darkMode: document.body.classList.contains('dark'),
+        baseCurrency: document.getElementById('baseCurrency').value,
+        targetCurrency: document.getElementById('targetCurrency').value
+      };
+      localStorage.setItem('currencyPrefs', JSON.stringify(prefs));
+    }
+
+    function loadPreferences() {
+      const prefs = JSON.parse(localStorage.getItem('currencyPrefs') || '{}');
+      if (prefs.darkMode) {
+        document.body.classList.add('dark');
+        document.getElementById('darkModeToggle').checked = true;
+      }
+      if (prefs.baseCurrency) document.getElementById('baseCurrency').value = prefs.baseCurrency;
+      if (prefs.targetCurrency) document.getElementById('targetCurrency').value = prefs.targetCurrency;
+    }
+
+    ['baseCurrency', 'targetCurrency', 'darkModeToggle'].forEach(id => {
+      document.getElementById(id).addEventListener('change', savePreferences);
+    });
+
     document.getElementById("enableAmountsCheckbox").addEventListener("change", e => {
       document.getElementById("amountInputs").classList.toggle("hidden", !e.target.checked);
     });
@@ -364,6 +528,7 @@
 
     window.addEventListener("DOMContentLoaded", () => {
       populateSelects();
+      loadPreferences();
       populateDateInput();
       loadFromQueryParams();
     });
