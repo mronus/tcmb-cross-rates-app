@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Çapraz Kur Hesaplayıcı</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+    }
+    textarea, select, input, button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 8px;
+    }
+    label {
+      font-weight: bold;
+      margin-top: 1rem;
+      display: block;
+    }
+    #chartContainer {
+      margin-top: 2rem;
+    }
+    canvas {
+      max-width: 100%;
+      height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Çapraz Kur Hesaplayıcı</h1>
+
+  <label for="baseCurrency">Ana Para Birimi:</label>
+  <select id="baseCurrency"></select>
+
+  <label for="targetCurrency">Hedef Para Birimi:</label>
+  <select id="targetCurrency"></select>
+
+  <label for="dateInput">Tarihler (virgül veya satır ile ayrılmış):</label>
+  <textarea id="dateInput">5.07.2021, 2.12.2021
+1.02.2022
+1.03.2022</textarea>
+
+  <button id="fetchBtn">Kur Bilgilerini Getir</button>
+
+  <div id="chartContainer">
+    <canvas id="rateChart"></canvas>
+  </div>
+
+  <script>
+    const currencyList = [
+      'TRY', 'USD', 'AUD', 'DKK', 'EUR', 'GBP', 'CHF', 'SEK',
+      'CAD', 'KWD', 'NOK', 'SAR', 'JPY', 'BGN', 'RON', 'RUB',
+      'IRR', 'CNY', 'PKR', 'QAR', 'KRW', 'AZN', 'AED'
+    ];
+
+    let chartInstance = null;
+
+    function populateSelects() {
+      const base = document.getElementById('baseCurrency');
+      const target = document.getElementById('targetCurrency');
+      currencyList.forEach(code => {
+        const option1 = new Option(code, code);
+        const option2 = new Option(code, code);
+        base.add(option1);
+        target.add(option2);
+      });
+      base.value = 'TRY';
+      target.value = 'USD';
+    }
+
+    function parseDate(trDate) {
+      const [day, month, year] = trDate.split('.').map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    function formatDate(date) {
+      const pad = n => n.toString().padStart(2, '0');
+      const day = pad(date.getDate());
+      const month = pad(date.getMonth() + 1);
+      const year = date.getFullYear();
+      return {
+        dayMonthYear: `${day}${month}${year}`,
+        yearMonth: `${year}${month}`,
+        formatted: `${day}.${month}.${year}`
+      };
+    }
+
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function parseDatesFromTextarea(text) {
+      return text
+        .split(/[\n,]+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+
+    async function fetchCurrencyData(dateStr, currencyCode) {
+      let date = parseDate(dateStr);
+
+      while (true) {
+        const { dayMonthYear, yearMonth, formatted } = formatDate(date);
+        const url = `/api/currency?yearMonth=${yearMonth}&dayMonthYear=${dayMonthYear}`;
+
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            if (response.status === 404) {
+              date.setDate(date.getDate() + 1);
+              await delay(1000);
+              continue;
+            } else {
+              console.error(`❌ Hata (${formatted}):`, response.statusText);
+              return null;
+            }
+          }
+
+          const xmlText = await response.text();
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+
+          if (currencyCode === 'TRY') return { rate: 1 };
+
+          const currencyNode = [...xmlDoc.querySelectorAll("Currency")]
+            .find(c => c.getAttribute("Kod") === currencyCode);
+
+          if (!currencyNode) {
+            console.warn(`⚠️ ${currencyCode} ${formatted} için bulunamadı.`);
+            return null;
+          }
+
+          const rate = parseFloat(currencyNode.querySelector("ForexBuying")?.textContent || '0');
+          return { rate };
+
+        } catch (err) {
+          console.error(`❌ Ağ Hatası:`, err.message);
+          return null;
+        }
+      }
+    }
+
+    async function run() {
+      const baseCode = document.getElementById("baseCurrency").value;
+      const targetCode = document.getElementById("targetCurrency").value;
+      const rawText = document.getElementById("dateInput").value;
+      const dates = parseDatesFromTextarea(rawText);
+
+      if (baseCode === targetCode) {
+        alert("Ana ve hedef para birimi aynı olamaz.");
+        return;
+      }
+
+      const results = [];
+
+      for (const dateStr of dates) {
+        const [base, target] = await Promise.all([
+          fetchCurrencyData(dateStr, baseCode),
+          fetchCurrencyData(dateStr, targetCode)
+        ]);
+
+        if (!base || !target || !base.rate || !target.rate) {
+          console.warn(`⚠️ ${dateStr} için kur verisi eksik.`);
+          continue;
+        }
+
+        const crossRate = base.rate / target.rate;
+        results.push({
+          date: dateStr,
+          base: baseCode,
+          target: targetCode,
+          rate: crossRate.toFixed(6)
+        });
+
+        console.log(`✅ ${dateStr}: 1 ${baseCode} = ${crossRate.toFixed(6)} ${targetCode}`);
+        await delay(1000);
+      }
+
+      const csvLines = ['Date,BaseCurrency,TargetCurrency,CrossRate', ...results.map(r =>
+        `${r.date},${r.base},${r.target},${r.rate}`)];
+
+      const blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${baseCode}_${targetCode}_cross_rates.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      drawChart(results);
+    }
+
+    function drawChart(data) {
+      const labels = data.map(r => r.date);
+      const rates = data.map(r => parseFloat(r.rate));
+
+      const ctx = document.getElementById('rateChart').getContext('2d');
+
+      if (chartInstance) chartInstance.destroy(); // temizle
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: `1 ${data[0].base} → ${data[0].target}`,
+            data: rates,
+            fill: false,
+            tension: 0.1,
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: {
+              title: { display: true, text: 'Tarih' }
+            },
+            y: {
+              title: { display: true, text: 'Kur Oranı' },
+              beginAtZero: false
+            }
+          }
+        }
+      });
+    }
+
+    document.getElementById("fetchBtn").addEventListener("click", run);
+    window.addEventListener("DOMContentLoaded", populateSelects);
+  </script>
+</body>
+</html>
