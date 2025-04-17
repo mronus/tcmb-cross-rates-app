@@ -227,7 +227,7 @@
     <button onclick="generateShareableLink()">Share This Setup</button>
     <div id="spinner" style="display:none; text-align:center; margin-top:1rem;">Loading...</div>
     <div id="summaryOutput" style="font-weight: bold; margin-top: 1rem;"></div>
-    <div id="chartContainer">
+    <div id="chartContainer" style="display: none;">
       <button id="fullscreenBtn">🔍</button>
       <canvas id="rateChart"></canvas>
     </div>
@@ -409,6 +409,7 @@
     });
 
     async function run() {
+      document.getElementById('chartContainer').style.display = "none";
       document.getElementById("spinner").style.display = "block";
       const baseCode = document.getElementById("baseCurrency").value;
       const targetCode = document.getElementById("targetCurrency").value;
@@ -464,6 +465,7 @@
       }
 
       drawChart({ labels, datasets });
+      document.getElementById('chartContainer').style.display = "block";
       document.getElementById("spinner").style.display = "none";
       logStatus('✅ All data fetched successfully.', true);
     }
