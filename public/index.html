@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>Cross Currency Rate Viewer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
@@ -90,8 +91,8 @@
     <label for="baseCurrency">Base Currency:</label>
     <select id="baseCurrency"></select>
 
-    <label for="targetCurrency">Target Currency:</label>
-    <select id="targetCurrency"></select>
+    <label for="targetCurrency">Target Currency (select one or more):</label>
+    <select id="targetCurrency" multiple size="5"></select>
 
     <label for="dateInput">Exchange Dates (comma or newline separated):</label>
     <textarea id="dateInput" placeholder="Fetching default dates..."></textarea>
@@ -115,8 +116,11 @@
       </div>
     </div>
 
+    <div id="validationWarning" style="color: red; display: none; margin-top: 10px;"></div>
     <button id="fetchBtn">Fetch Exchange Rates</button>
-
+    <button onclick="generateShareableLink()">Share This Setup</button>
+    <div id="spinner" style="display:none; text-align:center; margin-top:1rem;">Loading...</div>
+    <div id="summaryOutput" style="font-weight: bold; margin-top: 1rem;"></div>
     <div id="chartContainer">
       <canvas id="rateChart"></canvas>
     </div>
@@ -128,7 +132,6 @@
       'CAD', 'KWD', 'NOK', 'SAR', 'JPY', 'BGN', 'RON', 'RUB',
       'IRR', 'CNY', 'PKR', 'QAR', 'KRW', 'AZN', 'AED'
     ];
-
     let chartInstance = null;
 
     function populateSelects() {
@@ -177,7 +180,7 @@
     async function fetchXmlData(dateStr) {
       let date = parseDate(dateStr);
       while (true) {
-        const { dayMonthYear, yearMonth, formatted } = formatDate(date);
+        const { dayMonthYear, yearMonth } = formatDate(date);
         const url = `/api/currency?yearMonth=${yearMonth}&dayMonthYear=${dayMonthYear}`;
         try {
           const response = await fetch(url);
@@ -187,15 +190,12 @@
               await delay(1000);
               continue;
             } else {
-              console.error(`❌ Error (${formatted}):`, response.statusText);
               return null;
             }
           }
           const xmlText = await response.text();
-          const parser = new DOMParser();
-          return parser.parseFromString(xmlText, "text/xml");
-        } catch (err) {
-          console.error(`❌ Network Error:`, err.message);
+          return new DOMParser().parseFromString(xmlText, "text/xml");
+        } catch {
           return null;
         }
       }
@@ -203,115 +203,8 @@
 
     function extractRate(xmlDoc, currencyCode) {
       if (currencyCode === 'TRY') return 1;
-      const currencyNode = [...xmlDoc.querySelectorAll("Currency")].find(
-        c => c.getAttribute("Kod") === currencyCode
-      );
-      if (!currencyNode) return null;
-      const rate = parseFloat(currencyNode.querySelector("ForexBuying")?.textContent || '0');
-      return rate || null;
-    }
-
-    async function run() {
-      const baseCode = document.getElementById("baseCurrency").value;
-      const targetCode = document.getElementById("targetCurrency").value;
-      const dateList = parseList(document.getElementById("dateInput").value);
-      if (baseCode === targetCode) {
-        alert("Base and target currencies must be different.");
-        return;
-      }
-
-      const enableAmounts = document.getElementById("enableAmountsCheckbox").checked;
-      const useCommaDecimal = document.getElementById("useCommaDecimalCheckbox").checked;
-      let amountList = [];
-
-      if (enableAmounts) {
-        amountList = parseAmounts(document.getElementById("amountsInput").value, useCommaDecimal);
-        if (amountList.length !== dateList.length) {
-          alert("Number of amounts must match number of dates.");
-          return;
-        }
-      }
-
-      const results = [];
-      logStatus('Fetching exchange rates...');
-      for (let i = 0; i < dateList.length; i++) {
-        const dateStr = dateList[i];
-        const xmlDoc = await fetchXmlData(dateStr);
-        if (!xmlDoc) {
-          logStatus(`⚠️ Could not fetch data for ${dateStr}`);
-          continue;
-        }
-        const baseRate = extractRate(xmlDoc, baseCode);
-        const targetRate = extractRate(xmlDoc, targetCode);
-        if (!baseRate || !targetRate) {
-          logStatus(`⚠️ Missing rate(s) for ${dateStr}`);
-          continue;
-        }
-        const crossRate = baseRate / targetRate;
-        const amountInTarget = enableAmounts ? amountList[i] : null;
-        const convertedAmount = amountInTarget != null ? amountInTarget / crossRate : null;
-
-        results.push({
-          date: dateStr,
-          base: baseCode,
-          target: targetCode,
-          rate: crossRate.toFixed(6),
-          amount: amountInTarget?.toFixed(2) || null,
-          converted: convertedAmount?.toFixed(2) || null
-        });
-
-        logStatus(`✅ ${dateStr}: 1 ${baseCode} = ${crossRate.toFixed(6)} ${targetCode}`);
-        await delay(1000);
-      }
-
-      logStatus('✅ All data fetched successfully. Chart & CSV ready.', true);
-      const csvLines = ['Date,BaseCurrency,TargetCurrency,CrossRate,AmountInTargetCurrency,ConvertedAmountInBaseCurrency'];
-      results.forEach(r => {
-        csvLines.push(`${r.date},${r.base},${r.target},${r.rate},${r.amount ?? ''},${r.converted ?? ''}`);
-      });
-
-      const blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${baseCode}_${targetCode}_cross_rates.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      drawChart(results, enableAmounts);
-    }
-
-    function drawChart(data, showConverted = false) {
-      const ctx = document.getElementById('rateChart').getContext('2d');
-      if (chartInstance) chartInstance.destroy();
-      const labels = data.map(r => r.date);
-      const values = showConverted
-        ? data.map(r => parseFloat(r.converted || 0))
-        : data.map(r => parseFloat(r.rate));
-
-      chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [{
-            label: showConverted ? `Converted Amount in ${data[0].base}` : `1 ${data[0].base} → ${data[0].target}`,
-            data: values,
-            fill: false,
-            tension: 0.1,
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: { title: { display: true, text: 'Date' }},
-            y: { title: { display: true, text: showConverted ? 'Converted Amount' : 'Exchange Rate' }}
-          }
-        }
-      });
+      const node = [...xmlDoc.querySelectorAll("Currency")].find(c => c.getAttribute("Kod") === currencyCode);
+      return node ? parseFloat(node.querySelector("ForexBuying")?.textContent || '0') : null;
     }
 
     function logStatus(message, isFinal = false) {
@@ -325,26 +218,135 @@
       const today = new Date();
       for (let i = 0; i < 12; i++) {
         const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        dates.push(`${day}.${month}.${year}`);
+        dates.push(formatDate(date).formatted);
       }
       return dates.reverse().join('\n');
     }
 
-    function populateDateInput() {
-      document.getElementById('dateInput').value = getFirstDaysOfLast12Months();
+    function drawChart(dataSets) {
+      const ctx = document.getElementById('rateChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: dataSets.labels, datasets: dataSets.datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            zoom: {
+              pan: { enabled: true, mode: 'x' },
+              zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+            }
+          },
+          scales: {
+            x: { title: { display: true, text: 'Date' } },
+            y: { title: { display: true, text: 'Value' } }
+          }
+        }
+      });
+    }
+
+    async function run() {
+      document.getElementById("spinner").style.display = "block";
+      const baseCode = document.getElementById("baseCurrency").value;
+      const targetCodes = Array.from(document.getElementById("targetCurrency").selectedOptions).map(o => o.value);
+      const dateList = parseList(document.getElementById("dateInput").value);
+      const enableAmounts = document.getElementById("enableAmountsCheckbox").checked;
+      const useCommaDecimal = document.getElementById("useCommaDecimalCheckbox").checked;
+      let amountList = enableAmounts ? parseAmounts(document.getElementById("amountsInput").value, useCommaDecimal) : [];
+
+      const datasets = [];
+      const labels = [...dateList];
+      const summary = {};
+
+      for (const targetCode of targetCodes) {
+        const rates = [], converted = [];
+        let total = 0;
+        for (let i = 0; i < dateList.length; i++) {
+          const xmlDoc = await fetchXmlData(dateList[i]);
+          const baseRate = extractRate(xmlDoc, baseCode);
+          const targetRate = extractRate(xmlDoc, targetCode);
+          const crossRate = baseRate / targetRate;
+          rates.push(crossRate.toFixed(6));
+          if (enableAmounts) {
+            const val = amountList[i] / crossRate;
+            converted.push(val.toFixed(2));
+            total += val;
+          }
+          logStatus(`✅ ${dateList[i]}: 1 ${baseCode} = ${crossRate.toFixed(6)} ${targetCode}`);
+          await delay(1000);
+        }
+
+        const avg = rates.reduce((a, b) => a + parseFloat(b), 0) / rates.length;
+        datasets.push({ label: `1 ${baseCode} → ${targetCode}`, data: enableAmounts ? converted : rates, borderWidth: 2 });
+        datasets.push({ label: `${targetCode} Avg`, data: new Array(labels.length).fill(avg), borderDash: [5, 5], borderColor: 'gray', borderWidth: 1 });
+        if (enableAmounts) summary[targetCode] = total.toFixed(2);
+      }
+
+      if (enableAmounts) {
+        document.getElementById("summaryOutput").textContent = Object.entries(summary).map(([k,v]) => `Total in ${baseCode} from ${k}: ${v}`).join(' | ');
+      }
+
+      drawChart({ labels, datasets });
+      document.getElementById("spinner").style.display = "none";
+      logStatus('✅ All data fetched successfully.', true);
+    }
+
+    function generateShareableLink() {
+      const base = document.getElementById("baseCurrency").value;
+      const targets = Array.from(document.getElementById("targetCurrency").selectedOptions).map(o => o.value).join(',');
+      const dates = parseList(document.getElementById("dateInput").value).join(';');
+      const amounts = parseList(document.getElementById("amountsInput").value).join(';');
+      const url = new URL(window.location.href);
+      url.searchParams.set("base", base);
+      url.searchParams.set("target", targets);
+      url.searchParams.set("dates", dates);
+      if (amounts) url.searchParams.set("amounts", amounts);
+      prompt("Copy this link to share:", url.toString());
+    }
+
+    function loadFromQueryParams() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('base')) document.getElementById('baseCurrency').value = params.get('base');
+      if (params.has('target')) {
+        const selected = params.get('target').split(',');
+        const targetSelect = document.getElementById('targetCurrency');
+        Array.from(targetSelect.options).forEach(opt => {
+          opt.selected = selected.includes(opt.value);
+        });
+      }
+      if (params.has('dates')) document.getElementById('dateInput').value = params.get('dates').split(';').join('\n');
+      if (params.has('amounts')) {
+        document.getElementById("enableAmountsCheckbox").checked = true;
+        document.getElementById("amountInputs").classList.remove("hidden");
+        document.getElementById("amountsInput").value = params.get('amounts').split(';').join('\n');
+      }
+    }
+
+    function validateMatchingLengths() {
+      const dateList = parseList(document.getElementById("dateInput").value);
+      const amountList = parseList(document.getElementById("amountsInput").value);
+      const warning = document.getElementById("validationWarning");
+      if (amountList.length > 0 && amountList.length !== dateList.length) {
+        warning.textContent = `⚠️ Number of amounts (${amountList.length}) does not match number of dates (${dateList.length}).`;
+        warning.style.display = 'block';
+      } else {
+        warning.style.display = 'none';
+      }
     }
 
     document.getElementById("enableAmountsCheckbox").addEventListener("change", e => {
       document.getElementById("amountInputs").classList.toggle("hidden", !e.target.checked);
     });
-
     document.getElementById("fetchBtn").addEventListener("click", run);
+    document.getElementById("dateInput").addEventListener("input", validateMatchingLengths);
+    document.getElementById("amountsInput").addEventListener("input", validateMatchingLengths);
+
     window.addEventListener("DOMContentLoaded", () => {
       populateSelects();
       populateDateInput();
+      loadFromQueryParams();
     });
   </script>
 </body>
