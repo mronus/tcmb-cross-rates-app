@@ -459,7 +459,7 @@
           label: enableAmounts ? `${baseCode} Avg (Converted)` : `${targetCode} Avg`,
           data: new Array(labels.length).fill(avg),
           borderDash: [5, 5],
-          borderColor: 'gray',
+          borderColor: enableAmounts ? '#10b981' : 'gray',
           borderWidth: 1
         }
       ];
