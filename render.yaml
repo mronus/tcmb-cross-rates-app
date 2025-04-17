@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: tcmb-cross-rates-app
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    autoDeploy: true
+    rootDir: .
