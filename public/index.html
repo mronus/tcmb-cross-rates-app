@@ -224,6 +224,7 @@
 
     <div id="validationWarning" style="color: red; display: none; margin-top: 10px;"></div>
     <button id="fetchBtn">Fetch Exchange Rates</button>
+    <button id="exportBtn" class="hidden">📄 Export CSV</button>
     <button onclick="generateShareableLink()">Share This Setup</button>
     <div id="spinner" style="display:none; text-align:center; margin-top:1rem;">Loading...</div>
     <div id="summaryOutput" style="font-weight: bold; margin-top: 1rem;"></div>
@@ -465,9 +466,22 @@
       }
 
       drawChart({ labels, datasets });
-      document.getElementById('chartContainer').style.display = "block";
+
+      // Save results for export
+      lastResults = dateList.map((date, i) => ({
+        date,
+        base: baseCode,
+        target: targetCode,
+        rate: rates[i],
+        amount: enableAmounts ? amountList[i]?.toFixed(2) : null,
+        converted: enableAmounts ? converted[i] : null
+      }));
+
       document.getElementById("spinner").style.display = "none";
       logStatus('✅ All data fetched successfully.', true);
+      document.getElementById("exportBtn").classList.remove("hidden");
+      document.getElementById('chartContainer').style.display = "block";
+      document.getElementById("spinner").style.display = "none";
     }
 
 
@@ -536,6 +550,30 @@
       if (prefs.baseCurrency) document.getElementById('baseCurrency').value = prefs.baseCurrency;
       if (prefs.targetCurrency) document.getElementById('targetCurrency').value = prefs.targetCurrency;
     }
+
+    function exportCSV() {
+      if (!lastResults.length) return;
+
+      const csvLines = [
+        'Date,BaseCurrency,TargetCurrency,CrossRate,AmountInTargetCurrency,ConvertedAmountInBaseCurrency'
+      ];
+
+      lastResults.forEach(r => {
+        csvLines.push(`${r.date},${r.base},${r.target},${r.rate},${r.amount ?? ''},${r.converted ?? ''}`);
+      });
+
+      const blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${lastResults[0].base}_${lastResults[0].target}_rates.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("exportBtn").addEventListener("click", exportCSV);
 
     ['baseCurrency', 'targetCurrency', 'darkModeToggle'].forEach(id => {
       document.getElementById(id).addEventListener('change', savePreferences);
