@@ -553,6 +553,11 @@
       }
     });
 
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (!document.fullscreenEnabled || isIOS) {
+      document.getElementById('fullscreenBtn').style.display = 'none';
+    }
+
     document.getElementById("enableAmountsCheckbox").addEventListener("change", e => {
       document.getElementById("amountInputs").classList.toggle("hidden", !e.target.checked);
     });
