@@ -34,7 +34,6 @@
     <span id="log" style="font-size: 16px; font-weight: normal; color: #555; margin-left: 1rem;"></span>
   </h1>
 
-
   <label for="baseCurrency">Base Currency:</label>
   <select id="baseCurrency"></select>
 
@@ -43,7 +42,6 @@
 
   <label for="dateInput">Enter Dates (comma or newline separated):</label>
   <textarea id="dateInput" placeholder="Fetching default dates..."></textarea>
-
 
   <button id="fetchBtn">Fetch Exchange Rates</button>
 
@@ -71,8 +69,8 @@
         target.add(option2);
       });
 
-      base.value = 'TRY';   // default base
-      target.value = 'EUR'; // default target
+      base.value = 'TRY';
+      target.value = 'EUR';
     }
 
     function parseDate(trDate) {
@@ -103,7 +101,7 @@
         .filter(Boolean);
     }
 
-    async function fetchCurrencyData(dateStr, currencyCode) {
+    async function fetchXmlData(dateStr) {
       let date = parseDate(dateStr);
 
       while (true) {
@@ -126,25 +124,25 @@
           const xmlText = await response.text();
           const parser = new DOMParser();
           const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-
-          if (currencyCode === 'TRY') return { rate: 1 };
-
-          const currencyNode = [...xmlDoc.querySelectorAll("Currency")]
-            .find(c => c.getAttribute("Kod") === currencyCode);
-
-          if (!currencyNode) {
-            console.warn(`⚠️ ${currencyCode} not found for ${formatted}.`);
-            return null;
-          }
-
-          const rate = parseFloat(currencyNode.querySelector("ForexBuying")?.textContent || '0');
-          return { rate };
+          return xmlDoc;
 
         } catch (err) {
           console.error(`❌ Network Error:`, err.message);
           return null;
         }
       }
+    }
+
+    function extractRate(xmlDoc, currencyCode) {
+      if (currencyCode === 'TRY') return 1;
+
+      const currencyNode = [...xmlDoc.querySelectorAll("Currency")]
+        .find(c => c.getAttribute("Kod") === currencyCode);
+
+      if (!currencyNode) return null;
+
+      const rate = parseFloat(currencyNode.querySelector("ForexBuying")?.textContent || '0');
+      return rate || null;
     }
 
     async function run() {
@@ -162,17 +160,21 @@
 
       logStatus('Fetching exchange rates...');
       for (const dateStr of dates) {
-        const [base, target] = await Promise.all([
-          fetchCurrencyData(dateStr, baseCode),
-          fetchCurrencyData(dateStr, targetCode)
-        ]);
-
-        if (!base || !target || !base.rate || !target.rate) {
-          console.warn(`⚠️ Missing exchange rate for ${dateStr}`);
+        const xmlDoc = await fetchXmlData(dateStr);
+        if (!xmlDoc) {
+          logStatus(`⚠️ Could not fetch data for ${dateStr}`);
           continue;
         }
 
-        const crossRate = base.rate / target.rate;
+        const baseRate = extractRate(xmlDoc, baseCode);
+        const targetRate = extractRate(xmlDoc, targetCode);
+
+        if (!baseRate || !targetRate) {
+          logStatus(`⚠️ Missing rate(s) for ${dateStr}`);
+          continue;
+        }
+
+        const crossRate = baseRate / targetRate;
         results.push({
           date: dateStr,
           base: baseCode,
@@ -182,6 +184,7 @@
         logStatus(`✅ ${dateStr}: 1 ${baseCode} = ${crossRate.toFixed(6)} ${targetCode}`);
         await delay(1000);
       }
+
       logStatus('✅ All data fetched successfully. Chart & CSV ready.', true);
 
       const csvLines = ['Date,BaseCurrency,TargetCurrency,CrossRate', ...results.map(r =>
@@ -256,14 +259,8 @@
     function logStatus(message, isFinal = false) {
       const log = document.getElementById('log');
       log.textContent = message;
-      if (isFinal) {
-        log.style.color = 'green';
-      } else {
-        log.style.color = '#555';
-      }
+      log.style.color = isFinal ? 'green' : '#555';
     }
-
-
 
     document.getElementById("fetchBtn").addEventListener("click", run);
     window.addEventListener("DOMContentLoaded", () => {
