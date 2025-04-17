@@ -108,7 +108,7 @@
 
       while (true) {
         const { dayMonthYear, yearMonth, formatted } = formatDate(date);
-        const url = `/api/kur?yearMonth=${yearMonth}&dayMonthYear=${dayMonthYear}`;
+        const url = `/api/currency?yearMonth=${yearMonth}&dayMonthYear=${dayMonthYear}`;
 
         try {
           const response = await fetch(url);
