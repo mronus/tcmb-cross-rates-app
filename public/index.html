@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Çapraz Kur Hesaplayıcı</title>
+  <title>Cross Currency Rate Viewer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -29,20 +29,23 @@
   </style>
 </head>
 <body>
-  <h1>Çapraz Kur Hesaplayıcı</h1>
+  <h1>
+    Cross Currency Rate Viewer
+    <span id="log" style="font-size: 16px; font-weight: normal; color: #555; margin-left: 1rem;"></span>
+  </h1>
 
-  <label for="baseCurrency">Ana Para Birimi:</label>
+
+  <label for="baseCurrency">Base Currency:</label>
   <select id="baseCurrency"></select>
 
-  <label for="targetCurrency">Hedef Para Birimi:</label>
+  <label for="targetCurrency">Target Currency:</label>
   <select id="targetCurrency"></select>
 
-  <label for="dateInput">Tarihler (virgül veya satır ile ayrılmış):</label>
-  <textarea id="dateInput">5.07.2021, 2.12.2021
-1.02.2022
-1.03.2022</textarea>
+  <label for="dateInput">Enter Dates (comma or newline separated):</label>
+  <textarea id="dateInput" placeholder="Fetching default dates..."></textarea>
 
-  <button id="fetchBtn">Kur Bilgilerini Getir</button>
+
+  <button id="fetchBtn">Fetch Exchange Rates</button>
 
   <div id="chartContainer">
     <canvas id="rateChart"></canvas>
@@ -60,14 +63,16 @@
     function populateSelects() {
       const base = document.getElementById('baseCurrency');
       const target = document.getElementById('targetCurrency');
+
       currencyList.forEach(code => {
         const option1 = new Option(code, code);
         const option2 = new Option(code, code);
         base.add(option1);
         target.add(option2);
       });
-      base.value = 'TRY';
-      target.value = 'USD';
+
+      base.value = 'TRY';   // default base
+      target.value = 'EUR'; // default target
     }
 
     function parseDate(trDate) {
@@ -103,7 +108,7 @@
 
       while (true) {
         const { dayMonthYear, yearMonth, formatted } = formatDate(date);
-        const url = `/api/currency?yearMonth=${yearMonth}&dayMonthYear=${dayMonthYear}`;
+        const url = `/api/kur?yearMonth=${yearMonth}&dayMonthYear=${dayMonthYear}`;
 
         try {
           const response = await fetch(url);
@@ -113,7 +118,7 @@
               await delay(1000);
               continue;
             } else {
-              console.error(`❌ Hata (${formatted}):`, response.statusText);
+              console.error(`❌ Error (${formatted}):`, response.statusText);
               return null;
             }
           }
@@ -128,7 +133,7 @@
             .find(c => c.getAttribute("Kod") === currencyCode);
 
           if (!currencyNode) {
-            console.warn(`⚠️ ${currencyCode} ${formatted} için bulunamadı.`);
+            console.warn(`⚠️ ${currencyCode} not found for ${formatted}.`);
             return null;
           }
 
@@ -136,7 +141,7 @@
           return { rate };
 
         } catch (err) {
-          console.error(`❌ Ağ Hatası:`, err.message);
+          console.error(`❌ Network Error:`, err.message);
           return null;
         }
       }
@@ -149,12 +154,13 @@
       const dates = parseDatesFromTextarea(rawText);
 
       if (baseCode === targetCode) {
-        alert("Ana ve hedef para birimi aynı olamaz.");
+        alert("Base and target currencies must be different.");
         return;
       }
 
       const results = [];
 
+      logStatus('Fetching exchange rates...');
       for (const dateStr of dates) {
         const [base, target] = await Promise.all([
           fetchCurrencyData(dateStr, baseCode),
@@ -162,7 +168,7 @@
         ]);
 
         if (!base || !target || !base.rate || !target.rate) {
-          console.warn(`⚠️ ${dateStr} için kur verisi eksik.`);
+          console.warn(`⚠️ Missing exchange rate for ${dateStr}`);
           continue;
         }
 
@@ -173,10 +179,10 @@
           target: targetCode,
           rate: crossRate.toFixed(6)
         });
-
-        console.log(`✅ ${dateStr}: 1 ${baseCode} = ${crossRate.toFixed(6)} ${targetCode}`);
+        logStatus(`✅ ${dateStr}: 1 ${baseCode} = ${crossRate.toFixed(6)} ${targetCode}`);
         await delay(1000);
       }
+      logStatus('✅ All data fetched successfully. Chart & CSV ready.', true);
 
       const csvLines = ['Date,BaseCurrency,TargetCurrency,CrossRate', ...results.map(r =>
         `${r.date},${r.base},${r.target},${r.rate}`)];
@@ -197,10 +203,9 @@
     function drawChart(data) {
       const labels = data.map(r => r.date);
       const rates = data.map(r => parseFloat(r.rate));
-
       const ctx = document.getElementById('rateChart').getContext('2d');
 
-      if (chartInstance) chartInstance.destroy(); // temizle
+      if (chartInstance) chartInstance.destroy();
 
       chartInstance = new Chart(ctx, {
         type: 'line',
@@ -218,10 +223,10 @@
           responsive: true,
           scales: {
             x: {
-              title: { display: true, text: 'Tarih' }
+              title: { display: true, text: 'Date' }
             },
             y: {
-              title: { display: true, text: 'Kur Oranı' },
+              title: { display: true, text: 'Exchange Rate' },
               beginAtZero: false
             }
           }
@@ -229,8 +234,42 @@
       });
     }
 
+    function getFirstDaysOfLast12Months() {
+      const dates = [];
+      const today = new Date();
+
+      for (let i = 0; i < 12; i++) {
+        const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        dates.push(`${day}.${month}.${year}`);
+      }
+
+      return dates.reverse().join('\n');
+    }
+
+    function populateDateInput() {
+      document.getElementById('dateInput').value = getFirstDaysOfLast12Months();
+    }
+
+    function logStatus(message, isFinal = false) {
+      const log = document.getElementById('log');
+      log.textContent = message;
+      if (isFinal) {
+        log.style.color = 'green';
+      } else {
+        log.style.color = '#555';
+      }
+    }
+
+
+
     document.getElementById("fetchBtn").addEventListener("click", run);
-    window.addEventListener("DOMContentLoaded", populateSelects);
+    window.addEventListener("DOMContentLoaded", () => {
+      populateSelects();
+      populateDateInput();
+    });
   </script>
 </body>
 </html>
