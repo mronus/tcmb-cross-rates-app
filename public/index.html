@@ -92,7 +92,7 @@
     <select id="baseCurrency"></select>
 
     <label for="targetCurrency">Target Currency (select one or more):</label>
-    <select id="targetCurrency" multiple size="5"></select>
+    <select id="targetCurrency"></select>
 
     <label for="dateInput">Exchange Dates (comma or newline separated):</label>
     <textarea id="dateInput" placeholder="Fetching default dates..."></textarea>
@@ -247,18 +247,18 @@
       });
     }
 
-        async function run() {
+    async function run() {
       document.getElementById("spinner").style.display = "block";
       const baseCode = document.getElementById("baseCurrency").value;
-      const targetCodes = Array.from(document.getElementById("targetCurrency").selectedOptions).map(o => o.value);
+      const targetCode = document.getElementById("targetCurrency").value;
       const dateList = parseList(document.getElementById("dateInput").value);
       const enableAmounts = document.getElementById("enableAmountsCheckbox").checked;
       const useCommaDecimal = document.getElementById("useCommaDecimalCheckbox").checked;
       let amountList = enableAmounts ? parseAmounts(document.getElementById("amountsInput").value, useCommaDecimal) : [];
 
-      const datasets = [];
       const labels = [...dateList];
-      const summary = {};
+      const rates = [], converted = [];
+      let total = 0;
 
       for (let i = 0; i < dateList.length; i++) {
         const dateStr = dateList[i];
@@ -266,58 +266,43 @@
         if (!xmlDoc) continue;
 
         const baseRate = extractRate(xmlDoc, baseCode);
-        const rateMap = {};
-        for (const code of targetCodes) {
-          const targetRate = extractRate(xmlDoc, code);
-          if (targetRate && baseRate) {
-            rateMap[code] = baseRate / targetRate;
-          }
+        const targetRate = extractRate(xmlDoc, targetCode);
+        if (!baseRate || !targetRate) continue;
+
+        const crossRate = baseRate / targetRate;
+        rates.push(crossRate.toFixed(6));
+
+        if (enableAmounts) {
+          const val = amountList[i] / crossRate;
+          converted.push(val.toFixed(2));
+          total += val;
         }
 
-        for (const targetCode of targetCodes) {
-          if (!rateMap[targetCode]) continue;
-          const crossRate = rateMap[targetCode];
-
-          if (!datasets[targetCode]) {
-            datasets[targetCode] = {
-              label: `1 ${baseCode} → ${targetCode}`,
-              data: [],
-              borderWidth: 2
-            };
-          }
-
-          if (!summary[targetCode]) summary[targetCode] = 0;
-
-          datasets[targetCode].data.push(enableAmounts ? (amountList[i] / crossRate).toFixed(2) : crossRate.toFixed(6));
-
-          if (enableAmounts) summary[targetCode] += amountList[i] / crossRate;
-
-          logStatus(`✅ ${dateStr}: 1 ${baseCode} = ${crossRate.toFixed(6)} ${targetCode}`);
-        }
-
+        logStatus(`✅ ${dateStr}: 1 ${baseCode} = ${crossRate.toFixed(6)} ${targetCode}`);
         await delay(1000);
       }
 
-      const finalDatasets = Object.values(datasets);
-      for (const code of targetCodes) {
-        const values = finalDatasets.find(ds => ds.label.includes(code)).data.map(Number);
-        const avg = values.reduce((a, b) => a + b, 0) / values.length;
-        finalDatasets.push({
-          label: `${code} Avg`,
+      const avg = rates.reduce((a, b) => a + parseFloat(b), 0) / rates.length;
+      const datasets = [
+        {
+          label: `1 ${baseCode} → ${targetCode}`,
+          data: enableAmounts ? converted : rates,
+          borderWidth: 2
+        },
+        {
+          label: `${targetCode} Avg`,
           data: new Array(labels.length).fill(avg),
           borderDash: [5, 5],
           borderColor: 'gray',
           borderWidth: 1
-        });
-      }
+        }
+      ];
 
       if (enableAmounts) {
-        document.getElementById("summaryOutput").textContent = Object.entries(summary)
-          .map(([k,v]) => `Total in ${baseCode} from ${k}: ${v.toFixed(2)}`)
-          .join(' | ');
+        document.getElementById("summaryOutput").textContent = `Total in ${baseCode}: ${total.toFixed(2)}`;
       }
 
-      drawChart({ labels, datasets: finalDatasets });
+      drawChart({ labels, datasets });
       document.getElementById("spinner").style.display = "none";
       logStatus('✅ All data fetched successfully.', true);
     }
