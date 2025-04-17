@@ -249,13 +249,14 @@
         }
         const crossRate = baseRate / targetRate;
         const amountInTarget = enableAmounts ? amountList[i] : null;
-        const convertedAmount = amountInTarget != null ? amountInTarget * crossRate : null;
+        const convertedAmount = amountInTarget != null ? amountInTarget / crossRate : null;
 
         results.push({
           date: dateStr,
           base: baseCode,
           target: targetCode,
           rate: crossRate.toFixed(6),
+          amount: amountInTarget?.toFixed(2) || null,
           converted: convertedAmount?.toFixed(2) || null
         });
 
@@ -264,9 +265,9 @@
       }
 
       logStatus('✅ All data fetched successfully. Chart & CSV ready.', true);
-      const csvLines = ['Date,BaseCurrency,TargetCurrency,CrossRate,ConvertedAmountInBaseCurrency'];
+      const csvLines = ['Date,BaseCurrency,TargetCurrency,CrossRate,AmountInTargetCurrency,ConvertedAmountInBaseCurrency'];
       results.forEach(r => {
-        csvLines.push(`${r.date},${r.base},${r.target},${r.rate},${r.converted ?? ''}`);
+        csvLines.push(`${r.date},${r.base},${r.target},${r.rate},${r.amount ?? ''},${r.converted ?? ''}`);
       });
 
       const blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
