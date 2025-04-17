@@ -4,67 +4,122 @@
   <meta charset="UTF-8" />
   <title>Cross Currency Rate Viewer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
       font-family: Arial, sans-serif;
-      margin: 2rem;
+      margin: 1rem;
+      padding: 0;
+      box-sizing: border-box;
+      background-color: #f9f9f9;
     }
+
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+
+    h1 {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem;
+      font-size: 1.5rem;
+    }
+
     textarea, select, input[type="text"], button {
       width: 100%;
       margin-top: 10px;
-      padding: 8px;
+      padding: 10px;
+      font-size: 1rem;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
     }
+
     label {
       font-weight: bold;
       margin-top: 1rem;
       display: block;
     }
+
     #chartContainer {
       margin-top: 2rem;
     }
+
     canvas {
-      max-width: 100%;
-      height: 400px;
+      width: 100% !important;
+      height: auto !important;
     }
+
     .hidden {
       display: none;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .checkbox-group {
+        flex-direction: column;
+        align-items: flex-start;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>
-    Cross Currency Rate Viewer
-    <span id="log" style="font-size: 16px; font-weight: normal; color: #555; margin-left: 1rem;"></span>
-  </h1>
+  <div class="container">
+    <h1>
+      Cross Currency Rate Viewer
+      <span id="log" style="font-size: 1rem; font-weight: normal; color: #555;"></span>
+    </h1>
 
-  <label for="baseCurrency">Base Currency:</label>
-  <select id="baseCurrency"></select>
+    <label for="baseCurrency">Base Currency:</label>
+    <select id="baseCurrency"></select>
 
-  <label for="targetCurrency">Target Currency:</label>
-  <select id="targetCurrency"></select>
+    <label for="targetCurrency">Target Currency:</label>
+    <select id="targetCurrency"></select>
 
-  <label for="dateInput">Exchange Dates (comma or newline separated):</label>
-  <textarea id="dateInput" placeholder="Fetching default dates..."></textarea>
+    <label for="dateInput">Exchange Dates (comma or newline separated):</label>
+    <textarea id="dateInput" placeholder="Fetching default dates..."></textarea>
 
-  <label>
-    <input type="checkbox" id="enableAmountsCheckbox" />
-    Enable amount conversion for target currency
-  </label>
+    <div class="checkbox-group">
+      <label>
+        <input type="checkbox" id="enableAmountsCheckbox" />
+        Enable amount conversion for target currency
+      </label>
+    </div>
 
-  <div id="amountInputs" class="hidden">
-    <label for="amountsInput">Amounts in Target Currency (match order of dates):</label>
-    <textarea id="amountsInput" placeholder="E.g. 1000.50 or 950.25"></textarea>
+    <div id="amountInputs" class="hidden">
+      <label for="amountsInput">Amounts in Target Currency (match order of dates):</label>
+      <textarea id="amountsInput" placeholder="E.g. 1000.50 or 950.25"></textarea>
 
-    <label>
-      <input type="checkbox" id="useCommaDecimalCheckbox" />
-      Use comma (,) as decimal separator
-    </label>
-  </div>
+      <div class="checkbox-group">
+        <label>
+          <input type="checkbox" id="useCommaDecimalCheckbox" />
+          Use comma (,) as decimal separator
+        </label>
+      </div>
+    </div>
 
-  <button id="fetchBtn">Fetch Exchange Rates</button>
+    <button id="fetchBtn">Fetch Exchange Rates</button>
 
-  <div id="chartContainer">
-    <canvas id="rateChart"></canvas>
+    <div id="chartContainer">
+      <canvas id="rateChart"></canvas>
+    </div>
   </div>
 
   <script>
@@ -79,14 +134,10 @@
     function populateSelects() {
       const base = document.getElementById('baseCurrency');
       const target = document.getElementById('targetCurrency');
-
       currencyList.forEach(code => {
-        const option1 = new Option(code, code);
-        const option2 = new Option(code, code);
-        base.add(option1);
-        target.add(option2);
+        base.add(new Option(code, code));
+        target.add(new Option(code, code));
       });
-
       base.value = 'TRY';
       target.value = 'EUR';
     }
@@ -125,11 +176,9 @@
 
     async function fetchXmlData(dateStr) {
       let date = parseDate(dateStr);
-
       while (true) {
         const { dayMonthYear, yearMonth, formatted } = formatDate(date);
         const url = `/api/currency?yearMonth=${yearMonth}&dayMonthYear=${dayMonthYear}`;
-
         try {
           const response = await fetch(url);
           if (!response.ok) {
@@ -142,11 +191,9 @@
               return null;
             }
           }
-
           const xmlText = await response.text();
           const parser = new DOMParser();
           return parser.parseFromString(xmlText, "text/xml");
-
         } catch (err) {
           console.error(`❌ Network Error:`, err.message);
           return null;
@@ -156,12 +203,10 @@
 
     function extractRate(xmlDoc, currencyCode) {
       if (currencyCode === 'TRY') return 1;
-
-      const currencyNode = [...xmlDoc.querySelectorAll("Currency")]
-        .find(c => c.getAttribute("Kod") === currencyCode);
-
+      const currencyNode = [...xmlDoc.querySelectorAll("Currency")].find(
+        c => c.getAttribute("Kod") === currencyCode
+      );
       if (!currencyNode) return null;
-
       const rate = parseFloat(currencyNode.querySelector("ForexBuying")?.textContent || '0');
       return rate || null;
     }
@@ -170,7 +215,6 @@
       const baseCode = document.getElementById("baseCurrency").value;
       const targetCode = document.getElementById("targetCurrency").value;
       const dateList = parseList(document.getElementById("dateInput").value);
-
       if (baseCode === targetCode) {
         alert("Base and target currencies must be different.");
         return;
@@ -182,7 +226,6 @@
 
       if (enableAmounts) {
         amountList = parseAmounts(document.getElementById("amountsInput").value, useCommaDecimal);
-
         if (amountList.length !== dateList.length) {
           alert("Number of amounts must match number of dates.");
           return;
@@ -190,7 +233,6 @@
       }
 
       const results = [];
-
       logStatus('Fetching exchange rates...');
       for (let i = 0; i < dateList.length; i++) {
         const dateStr = dateList[i];
@@ -199,15 +241,12 @@
           logStatus(`⚠️ Could not fetch data for ${dateStr}`);
           continue;
         }
-
         const baseRate = extractRate(xmlDoc, baseCode);
         const targetRate = extractRate(xmlDoc, targetCode);
-
         if (!baseRate || !targetRate) {
           logStatus(`⚠️ Missing rate(s) for ${dateStr}`);
           continue;
         }
-
         const crossRate = baseRate / targetRate;
         const amountInTarget = enableAmounts ? amountList[i] : null;
         const convertedAmount = amountInTarget != null ? amountInTarget * crossRate : null;
@@ -225,7 +264,6 @@
       }
 
       logStatus('✅ All data fetched successfully. Chart & CSV ready.', true);
-
       const csvLines = ['Date,BaseCurrency,TargetCurrency,CrossRate,ConvertedAmountInBaseCurrency'];
       results.forEach(r => {
         csvLines.push(`${r.date},${r.base},${r.target},${r.rate},${r.converted ?? ''}`);
@@ -247,7 +285,6 @@
     function drawChart(data, showConverted = false) {
       const ctx = document.getElementById('rateChart').getContext('2d');
       if (chartInstance) chartInstance.destroy();
-
       const labels = data.map(r => r.date);
       const values = showConverted
         ? data.map(r => parseFloat(r.converted || 0))
@@ -267,6 +304,7 @@
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           scales: {
             x: { title: { display: true, text: 'Date' }},
             y: { title: { display: true, text: showConverted ? 'Converted Amount' : 'Exchange Rate' }}
@@ -284,7 +322,6 @@
     function getFirstDaysOfLast12Months() {
       const dates = [];
       const today = new Date();
-
       for (let i = 0; i < 12; i++) {
         const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
         const day = String(date.getDate()).padStart(2, '0');
@@ -292,7 +329,6 @@
         const year = date.getFullYear();
         dates.push(`${day}.${month}.${year}`);
       }
-
       return dates.reverse().join('\n');
     }
 
