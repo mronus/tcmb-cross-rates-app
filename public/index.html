@@ -336,6 +336,10 @@
       }
     }
 
+    function populateDateInput() {
+      document.getElementById('dateInput').value = getFirstDaysOfLast12Months();
+    }
+
     document.getElementById("enableAmountsCheckbox").addEventListener("change", e => {
       document.getElementById("amountInputs").classList.toggle("hidden", !e.target.checked);
     });
